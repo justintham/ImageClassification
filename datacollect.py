@@ -8,7 +8,8 @@ import time
 import uuid
 
 # Retrieve environment variables
-ENDPOINT = "https://facerecognitiondev.cognitiveservices.azure.com/"
+ENDPOINT = ""
+PREDICTION_ENDPOINT = ""
 training_key = ""
 prediction_key = ""
 prediction_resource_id = ""
@@ -19,7 +20,7 @@ trainer = CustomVisionTrainingClient(ENDPOINT, credentials)
 
 # Set up the prediction credentials
 prediction_credentials = ApiKeyCredentials(in_headers={"Prediction-key": prediction_key})
-predictor = CustomVisionPredictionClient(ENDPOINT, prediction_credentials)
+predictor = CustomVisionPredictionClient(PREDICTION_ENDPOINT, prediction_credentials)
 
 publish_iteration_name = "classifyModel"
 
@@ -52,7 +53,7 @@ def get_or_create_tag(project_id, tag_name):
     print(f"Creating tag '{tag_name}'...")
     return trainer.create_tag(project_id, tag_name)
 
-# Make two tags in the new project or use existing ones
+# Make tags in the project or use existing ones
 hemlock_tag = get_or_create_tag(project.id, "Hemlock")
 cherry_tag = get_or_create_tag(project.id, "Japanese Cherry")
 
@@ -72,11 +73,6 @@ for image_num in range(1, 11):
     with open(os.path.join(base_image_location, "Japanese_Cherry", file_name), "rb") as image_contents:
         image_list.append(ImageFileCreateEntry(name=file_name, contents=image_contents.read(), tag_ids=[cherry_tag.id]))
 
-upload_result = trainer.create_images_from_files(project.id, ImageFileCreateBatch(images=image_list))
-if not upload_result.is_batch_successful:
-    print("Image batch upload failed.")
-    for image in upload_result.images:
-        print("Image status: ", image.status)
 
 print("Training...")
 try:
@@ -88,6 +84,7 @@ try:
         time.sleep(10)
     # The iteration is now trained or reused. Publish it to the project endpoint
     trainer.publish_iteration(project.id, iteration.id, publish_iteration_name, prediction_resource_id)
+    iteration = trainer.get_iterations(project.id)[-1]
     print("Done!")
 except Exception as e:
     if "Nothing changed since last training" in str(e):
@@ -97,15 +94,18 @@ except Exception as e:
         raise
 
 
+
 # Now there is a trained endpoint that can be used to make a prediction
 prediction_credentials = ApiKeyCredentials(in_headers={"Prediction-key": prediction_key})
-predictor = CustomVisionPredictionClient(ENDPOINT, prediction_credentials)
+predictor = CustomVisionPredictionClient(PREDICTION_ENDPOINT, prediction_credentials)
 
 with open(os.path.join (base_image_location, "Test/test_image.jpg"), "rb") as image_contents:
     results = predictor.classify_image(
-        project.id, publish_iteration_name, image_contents.read())
+       project.id, iteration.publish_name, image_contents.read())
 
     # Display the results.
     for prediction in results.predictions:
         print("\t" + prediction.tag_name +
               ": {0:.2f}%".format(prediction.probability * 100))
+
+
